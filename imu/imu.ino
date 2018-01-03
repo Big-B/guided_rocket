@@ -109,9 +109,9 @@ void setSelfTestBits(bool enabled) {
     accelgyro.setAccelYSelfTest(enabled);
     accelgyro.setAccelZSelfTest(enabled);
 
-    accelgyro.setGyroXSelfTest(enabled);
-    accelgyro.setGyroYSelfTest(enabled);
-    accelgyro.setGyroZSelfTest(enabled);
+    //accelgyro.setGyroXSelfTest(enabled);
+    //accelgyro.setGyroYSelfTest(enabled);
+    //accelgyro.setGyroZSelfTest(enabled);
 }
 
 // Return the factory trim value for accelerations
