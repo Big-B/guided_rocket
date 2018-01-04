@@ -1,36 +1,3 @@
-// I2C device class (I2Cdev) demonstration Arduino sketch for MPU6050 class
-// 10/7/2011 by Jeff Rowberg <jeff@rowberg.net>
-// Updates should (hopefully) always be available at https://github.com/jrowberg/i2cdevlib
-//
-// Changelog:
-//      2013-05-08 - added multiple output formats
-//                 - added seamless Fastwire support
-//      2011-10-07 - initial release
-
-/* ============================================
-   I2Cdev device library code is placed under the MIT license
-   Copyright (c) 2011 Jeff Rowberg
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in
-   all copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-   THE SOFTWARE.
-   ===============================================
- */
-
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
@@ -42,12 +9,18 @@
 #include "Wire.h"
 #endif
 
+// SD library for reading/writing to SD card
+#include <SD.h>
+
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for InvenSense evaluation board)
 // AD0 high = 0x69
 MPU6050 accelgyro; // <-- use for AD0 high
 //MPU6050 accelgyro(MPU6050_ADDRESS_AD0_HIGH);
+
+File datafile;
+const char* filename = "imu.out";
 
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
@@ -70,11 +43,73 @@ const double ST_MIN = -0.14;
 // not so easy to parse, and slow(er) over UART.
 #define OUTPUT_READABLE_ACCELGYRO
 
+// Allow outputs to both the card and the serial port for now
+#define __BOTH_OUTPUTS__
+
 // uncomment "OUTPUT_BINARY_ACCELGYRO" to send all 6 axes of data as 16-bit
 // binary, one right after the other. This is very fast (as fast as possible
 // without compression or data loss), and easy to parse, but impossible to read
 // for a human.
 //#define OUTPUT_BINARY_ACCELGYRO
+
+// These templated functions are here to make it easy to
+// print things to either the serial interface, card interface, or
+// both.
+template<typename T> void println(T message) {
+#if defined (__CARD_ONLY__) || defined (__BOTH_OUTPUTS__)
+    if(datafile) {
+        datafile.println(message);
+    }
+#endif
+#if defined (__SERIAL_ONLY__) || defined (__BOTH_OUTPUTS__)
+    if(Serial) {
+        Serial.println(message);
+    }
+#endif
+}
+
+template<typename T> void print(T message) {
+#if defined (__CARD_ONLY__) || defined (__BOTH_OUTPUTS__)
+    if(datafile) {
+        datafile.print(message);
+    }
+#endif
+#if defined (__SERIAL_ONLY__) || defined (__BOTH_OUTPUTS__)
+    if(Serial) {
+        Serial.print(message);
+    }
+#endif
+}
+
+template<typename T> size_t write(T val) {
+#if defined (__CARD_ONLY__) || defined (__BOTH_OUTPUTS__)
+    if(datafile) {
+        return datafile.write(val);
+    }
+#endif
+#if defined (__SERIAL_ONLY__) || defined (__BOTH_OUTPUTS__)
+    if(Serial) {
+        return Serial.write(val);
+    }
+#endif
+    return 0;
+}
+
+template<typename T> size_t write(T* buf, size_t len) {
+#if defined (__CARD_ONLY__) || defined (__BOTH_OUTPUTS__)
+    if(datafile) {
+        return datafile.write(buf, len);
+    }
+#endif
+#if defined (__SERIAL_ONLY__) || defined (__BOTH_OUTPUTS__)
+    if(Serial) {
+        return Serial.write(buf, len);
+    }
+#endif
+    return 0;
+}
+
+
 
 void getBias() {
     int32_t sumAx = 0;
@@ -189,63 +224,63 @@ bool selfTest() {
     double gz_bit = getBITValue(gz_st, gz_ft);
 
     if(ax_bit < ST_MIN || ax_bit > ST_MAX) {
-        Serial.println("AX Failed BIT");
-        Serial.print("AX Bit Val: ");
-        Serial.println(ax_bit);
-        Serial.print("AX FT Val: ");
-        Serial.println(ax_ft);
-        Serial.print("AX STR Val: ");
-        Serial.println(ax_st);
+        println("AX Failed BIT");
+        print("AX Bit Val: ");
+        println(ax_bit);
+        print("AX FT Val: ");
+        println(ax_ft);
+        print("AX STR Val: ");
+        println(ax_st);
         ret = false;
     }
     if (ay_bit < ST_MIN || ay_bit > ST_MAX) {
-        Serial.println("AY Failed BIT");
-        Serial.print("AY Bit Val: ");
-        Serial.println(ay_bit);
-        Serial.print("AY FT Val: ");
-        Serial.println(ay_ft);
-        Serial.print("AY STR Val: ");
-        Serial.println(ay_st);
+        println("AY Failed BIT");
+        print("AY Bit Val: ");
+        println(ay_bit);
+        print("AY FT Val: ");
+        println(ay_ft);
+        print("AY STR Val: ");
+        println(ay_st);
         ret = false;
     }
     if (az_bit < ST_MIN || az_bit > ST_MAX) {
-        Serial.println("AZ Failed BIT");
-        Serial.print("AZ Bit Val: ");
-        Serial.println(az_bit);
-        Serial.print("AZ FT Val: ");
-        Serial.println(az_ft);
-        Serial.print("AZ STR Val: ");
-        Serial.println(az_st);
+        println("AZ Failed BIT");
+        print("AZ Bit Val: ");
+        println(az_bit);
+        print("AZ FT Val: ");
+        println(az_ft);
+        print("AZ STR Val: ");
+        println(az_st);
         ret = false;
     }
     if (gx_bit < ST_MIN || gx_bit > ST_MAX) {
-        Serial.println("GX Failed BIT");
-        Serial.print("GX Bit Val: ");
-        Serial.println(gx_bit);
-        Serial.print("GX FT Val: ");
-        Serial.println(gx_ft);
-        Serial.print("GX STR Val: ");
-        Serial.println(gx_st);
+        println("GX Failed BIT");
+        print("GX Bit Val: ");
+        println(gx_bit);
+        print("GX FT Val: ");
+        println(gx_ft);
+        print("GX STR Val: ");
+        println(gx_st);
         ret = false;
     }
     if (gy_bit < ST_MIN || gy_bit > ST_MAX) {
-        Serial.println("GY Failed BIT");
-        Serial.print("GY Bit Val: ");
-        Serial.println(gy_bit);
-        Serial.print("GY FT Val: ");
-        Serial.println(gy_ft);
-        Serial.print("GY STR Val: ");
-        Serial.println(gy_st);
+        println("GY Failed BIT");
+        print("GY Bit Val: ");
+        println(gy_bit);
+        print("GY FT Val: ");
+        println(gy_ft);
+        print("GY STR Val: ");
+        println(gy_st);
         ret = false;
     }
     if (gz_bit < ST_MIN || gz_bit > ST_MAX) {
-        Serial.println("GZ Failed BIT");
-        Serial.print("GZ Bit Val: ");
-        Serial.println(gz_bit);
-        Serial.print("GZ FT Val: ");
-        Serial.println(gz_ft);
-        Serial.print("GZ STR Val: ");
-        Serial.println(gz_st);
+        println("GZ Failed BIT");
+        print("GZ Bit Val: ");
+        println(gz_bit);
+        print("GZ FT Val: ");
+        println(gz_ft);
+        print("GZ STR Val: ");
+        println(gz_st);
         ret = false;
     }
 
@@ -255,10 +290,48 @@ bool selfTest() {
     return ret;
 }
 
-#define LED_PIN 13
 bool blinkState = false;
 
+void SetupSDCard() {
+    bool alreadyExists = false;
+    println("Initializing SD card...");
+
+    // Setup SD card for mkrzero board
+    if(!SD.begin(SDCARD_SS_PIN)) {
+        println("Card failed");
+        exit(1);
+    }
+
+    if(SD.exists(filename)) {
+        alreadyExists = true;
+    }
+
+    // Open up the file on the SD card
+    datafile = SD.open(filename, FILE_WRITE);
+    if(!datafile) {
+        println("Failed to open file");
+        exit(1);
+    }
+
+    if(alreadyExists) {
+        datafile.println("\n\n\nNew Run\n\n\n");
+    }
+}
+
 void setup() {
+#if defined (__SERIAL_ONLY__) || defined (__BOTH_OUTPUTS__)
+    // initialize serial communication
+    Serial.begin(1000000);
+
+    // Wait for communication to be up
+    // Will need to be removed when running standalone
+    while(!Serial);
+#endif
+#if defined (__CARD_ONLY__) || defined (__BOTH_OUTPUTS__)
+    SetupSDCard();
+#endif
+
+
     // join I2C bus (I2Cdev library doesn't do this automatically)
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     Wire.begin();
@@ -266,26 +339,23 @@ void setup() {
     Fastwire::setup(400, true);
 #endif
 
-    // initialize serial communication
-    // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
-    // it's really up to you depending on your project)
-    Serial.begin(1000000);
-
     // initialize device
-    Serial.println("Initializing I2C devices...");
+    println("Initializing I2C devices...");
     accelgyro.initialize();
     accelgyro.setFullScaleGyroRange(gyroRate);
     accelgyro.setFullScaleAccelRange(accelRate);
 
     // verify connection
-    Serial.println("Testing device connections...");
-    Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+    println("Testing device connections...");
+    if(!accelgyro.testConnection()) {
+        println("MPU6050 connection failed");
+        //exit(1);
+    }
 
-    // use the code below to change accel/gyro offset values
-
+    println("MPU6050 connection successful");
 
     // configure Arduino LED pin for output
-    pinMode(LED_PIN, OUTPUT);
+    pinMode(LED_BUILTIN, OUTPUT);
     if(!selfTest()) {
         exit(1);
     }
@@ -296,15 +366,14 @@ void setup() {
 }
 
 void loop() {
-    Serial.print("a/g:\t");
-    Serial.print("ax(g):\t");
-    Serial.print("ay(g):\t");
-    Serial.print("az(g):\t");
-    Serial.print("gx:\t");
-    Serial.print("gy:\t");
-    Serial.println("gz:\t");
-    for(int i = 0; i < 1000; i++)
-    {
+    print("a/g:\t");
+    print("ax(g):\t");
+    print("ay(g):\t");
+    print("az(g):\t");
+    print("gx:\t");
+    print("gy:\t");
+    println("gz:\t");
+    for(int i = 0; i < 1000; i++) {
         // read raw accel/gyro measurements from device
         accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
@@ -314,30 +383,36 @@ void loop() {
 
 #ifdef OUTPUT_READABLE_ACCELGYRO
         // display tab-separated accel/gyro x/y/z values
-        Serial.print("a/g:\t");
-        Serial.print(ax/accelLsb[accelRate]); Serial.print("\t");
-        Serial.print(ay/accelLsb[accelRate]); Serial.print("\t");
-        Serial.print(az/accelLsb[accelRate]); Serial.print("\t");
-        Serial.print((gx)/gyroLsb[gyroRate]); Serial.print("\t");
-        Serial.print((gy)/gyroLsb[gyroRate]); Serial.print("\t");
-        Serial.println((gz)/gyroLsb[gyroRate]);
-        //Serial.print((gx-gxb)/gyroLsb[gyroRate]); Serial.print("\t");
-        //Serial.print((gy-gyb)/gyroLsb[gyroRate]); Serial.print("\t");
-        //Serial.println((gz-gzb)/gyroLsb[gyroRate]);
+        print("a/g:\t");
+        print(ax/accelLsb[accelRate]); print("\t");
+        print(ay/accelLsb[accelRate]); print("\t");
+        print(az/accelLsb[accelRate]); print("\t");
+        print((gx)/gyroLsb[gyroRate]); print("\t");
+        print((gy)/gyroLsb[gyroRate]); print("\t");
+        println((gz)/gyroLsb[gyroRate]);
+        //print((gx-gxb)/gyroLsb[gyroRate]); print("\t");
+        //print((gy-gyb)/gyroLsb[gyroRate]); print("\t");
+        //println((gz-gzb)/gyroLsb[gyroRate]);
 #endif
 
 #ifdef OUTPUT_BINARY_ACCELGYRO
-        Serial.write((uint8_t)(ax >> 8)); Serial.write((uint8_t)(ax & 0xFF));
-        Serial.write((uint8_t)(ay >> 8)); Serial.write((uint8_t)(ay & 0xFF));
-        Serial.write((uint8_t)(az >> 8)); Serial.write((uint8_t)(az & 0xFF));
-        Serial.write((uint8_t)(gx >> 8)); Serial.write((uint8_t)(gx & 0xFF));
-        Serial.write((uint8_t)(gy >> 8)); Serial.write((uint8_t)(gy & 0xFF));
-        Serial.write((uint8_t)(gz >> 8)); Serial.write((uint8_t)(gz & 0xFF));
+        write((uint8_t)(ax >> 8)); write((uint8_t)(ax & 0xFF));
+        write((uint8_t)(ay >> 8)); write((uint8_t)(ay & 0xFF));
+        write((uint8_t)(az >> 8)); write((uint8_t)(az & 0xFF));
+        write((uint8_t)(gx >> 8)); write((uint8_t)(gx & 0xFF));
+        write((uint8_t)(gy >> 8)); write((uint8_t)(gy & 0xFF));
+        write((uint8_t)(gz >> 8)); write((uint8_t)(gz & 0xFF));
 #endif
 
         // blink LED to indicate activity
         blinkState = !blinkState;
-        digitalWrite(LED_PIN, blinkState);
+        digitalWrite(LED_BUILTIN, blinkState);
+    }
+
+    println("\n\n\nExiting\n\n\n");
+
+    if(datafile) {
+        datafile.close();
     }
     exit(0);
 }
